@@ -3,333 +3,126 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chess Arena — 2 Player</title>
-  
-  <!-- Fonts & Libraries -->
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
-  
-  <!-- Custom Stylesheet -->
+  <title>CineSync — Watch & Chat Together</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <canvas id="confettiCanvas"></canvas>
 
-  <!-- ══════════════════ LANDING ══════════════════ -->
-  <div id="landing" class="page">
-    <!-- Floating decorations -->
-    <div class="piece-deco">♜</div>
-    <div class="piece-deco">♗</div>
-    <div class="piece-deco">♞</div>
-    <div class="piece-deco">♕</div>
-    <div class="piece-deco">♟</div>
-    <div class="piece-deco">♖</div>
+  <!-- Landing & Room Setup -->
+  <div id="landingPage" class="card">
+    <div class="brand-header">
+      <h1>🎬 CineSync</h1>
+      <p>Watch Google Drive movies together in real-time with video & voice chat</p>
+    </div>
+    
+    <div class="input-group">
+      <label for="username">Your Name</label>
+      <input type="text" id="username" placeholder="e.g. Alex" value="User">
+      
+      <label for="gdriveLink">Google Drive Video Link</label>
+      <input type="text" id="gdriveLink" placeholder="https://drive.google.com/file/d/.../view">
+      <span class="hint">Ensure link sharing is set to "Anyone with the link can view"</span>
+    </div>
 
-    <div class="landing-inner">
-      <!-- Brand -->
-      <div class="brand">
-        <div class="brand-icon">♚</div>
-        <div class="brand-title">Chess Arena</div>
-        <div class="brand-sub" id="brandSub">Local · Online · Random</div>
-      </div>
+    <div class="actions">
+      <button id="btnCreateRoom" class="btn primary">🚀 Create Watch Party</button>
+      
+      <div class="divider"><span>OR JOIN ROOM</span></div>
 
-      <div class="divider"></div>
-
-      <!-- Setup card -->
-      <div class="setup-card">
-        <!-- Mode selector -->
-        <div>
-          <div class="setup-section-label">How Do You Want To Play?</div>
-          <div class="mode-tabs">
-            <div class="mode-tab selected" data-mode="local">
-              <span class="mt-icon">🪑</span><span class="mt-lbl">Same Device</span>
-            </div>
-            <div class="mode-tab" data-mode="create">
-              <span class="mt-icon">🔗</span><span class="mt-lbl">Invite Friend</span>
-            </div>
-            <div class="mode-tab" data-mode="join">
-              <span class="mt-icon">🔑</span><span class="mt-lbl">Join Room</span>
-            </div>
-            <div class="mode-tab" data-mode="random">
-              <span class="mt-icon">🎲</span><span class="mt-lbl">Random Player</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- LOCAL panel: two names on one device -->
-        <div class="mp-panel show" id="panelLocal">
-          <div class="setup-section-label">Players</div>
-          <div class="players-row">
-            <div class="player-input-wrap">
-              <div class="color-dot white-dot"></div>
-              <input id="lNameWhite" type="text" value="White" placeholder="White Player" maxlength="16" spellcheck="false">
-            </div>
-            <div class="vs-badge">VS</div>
-            <div class="player-input-wrap">
-              <div class="color-dot black-dot"></div>
-              <input id="lNameBlack" type="text" value="Black" placeholder="Black Player" maxlength="16" spellcheck="false">
-            </div>
-          </div>
-        </div>
-
-        <!-- Shared name field for all online modes -->
-        <div class="mp-panel" id="panelYourName">
-          <div class="setup-section-label">Your Name</div>
-          <div class="mp-name-wrap">
-            <input id="lNameMe" type="text" placeholder="Enter your name" maxlength="16" spellcheck="false">
-          </div>
-        </div>
-
-        <!-- CREATE (invite friend) panel -->
-        <div class="mp-panel" id="panelCreate">
-          <div class="mp-hint">Creates a private room. Share the code or link with a friend on any device — they connect directly to you, peer-to-peer.</div>
-        </div>
-
-        <!-- JOIN panel -->
-        <div class="mp-panel" id="panelJoin">
-          <div class="setup-section-label">Room Code</div>
-          <div class="mp-code-row">
-            <input id="lJoinCode" type="text" placeholder="e.g. ABC123" maxlength="12" spellcheck="false" autocapitalize="characters">
-            <button class="mp-paste-btn" id="btnPasteCode" type="button">Paste</button>
-          </div>
-          <div class="mp-hint">Ask your friend for the room code shown on their screen, or open the invite link they sent you.</div>
-        </div>
-
-        <!-- RANDOM panel -->
-        <div class="mp-panel" id="panelRandom">
-          <div class="mp-hint">We'll drop you into an open public table and pair you with the next stranger who shows up — no code needed.</div>
-        </div>
-
-        <!-- Time control -->
-        <div>
-          <div class="setup-section-label">Time Per Move</div>
-          <div class="time-grid">
-            <div class="time-opt" data-secs="10">
-              <span class="time-val">10</span>
-              <span class="time-lbl">sec · Blitz</span>
-            </div>
-            <div class="time-opt" data-secs="15">
-              <span class="time-val">15</span>
-              <span class="time-lbl">sec · Fast</span>
-            </div>
-            <div class="time-opt" data-secs="30">
-              <span class="time-val">30</span>
-              <span class="time-lbl">sec · Standard</span>
-            </div>
-            <div class="time-opt selected" data-secs="60">
-              <span class="time-val">1</span>
-              <span class="time-lbl">min · Relaxed</span>
-            </div>
-            <div class="time-opt" data-secs="120">
-              <span class="time-val">2</span>
-              <span class="time-lbl">min · Slow</span>
-            </div>
-            <div class="time-opt" data-secs="0">
-              <span class="time-val">∞</span>
-              <span class="time-lbl">Unlimited</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Board theme -->
-        <div>
-          <div class="setup-section-label">Board Theme</div>
-          <div class="theme-row">
-            <div class="theme-opt selected" data-theme="classic">
-              <div class="theme-preview">
-                <span style="background:#eedab8;"></span><span style="background:#8a6240;"></span>
-                <span style="background:#8a6240;"></span><span style="background:#eedab8;"></span>
-              </div>
-              <div class="theme-name">Classic</div>
-            </div>
-            <div class="theme-opt" data-theme="ocean">
-              <div class="theme-preview">
-                <span style="background:#d4e8f0;"></span><span style="background:#4a7fa8;"></span>
-                <span style="background:#4a7fa8;"></span><span style="background:#d4e8f0;"></span>
-              </div>
-              <div class="theme-name">Ocean</div>
-            </div>
-            <div class="theme-opt" data-theme="forest">
-              <div class="theme-preview">
-                <span style="background:#d8e8c8;"></span><span style="background:#4a7a50;"></span>
-                <span style="background:#4a7a50;"></span><span style="background:#d8e8c8;"></span>
-              </div>
-              <div class="theme-name">Forest</div>
-            </div>
-            <div class="theme-opt" data-theme="night">
-              <div class="theme-preview">
-                <span style="background:#c8c8d8;"></span><span style="background:#484868;"></span>
-                <span style="background:#484868;"></span><span style="background:#c8c8d8;"></span>
-              </div>
-              <div class="theme-name">Night</div>
-            </div>
-          </div>
-        </div>
-
-        <button class="btn-play" id="btnPlay">Begin Game</button>
-      </div>
-
-      <!-- Features -->
-      <div class="features">
-        <div class="feature"><span class="feature-icon">⏱</span>Per-move timer</div>
-        <div class="feature"><span class="feature-icon">👑</span>Promotion picker</div>
-        <div class="feature"><span class="feature-icon">📋</span>Move history</div>
-        <div class="feature"><span class="feature-icon">↩</span>Undo moves</div>
+      <div class="join-box">
+        <input type="text" id="joinCode" placeholder="Enter 6-char Room Code">
+        <button id="btnJoinRoom" class="btn secondary">Join</button>
       </div>
     </div>
   </div>
 
-  <!-- ══════════════════ GAME ══════════════════ -->
-  <div id="game" class="page hidden">
-    <!-- Top bar -->
-    <div class="topbar">
-      <div class="topbar-brand"><span>♛</span> Chess Arena</div>
-      <div class="conn-badge hidden" id="connBadge"><span class="conn-dot"></span><span id="connBadgeText">Local game</span></div>
-      <div class="topbar-actions">
-        <button class="tb-btn hidden" id="btnChat">💬 Chat<span class="chat-badge hidden" id="chatBadge">0</span></button>
-        <button class="tb-btn hidden" id="btnVoice" title="Start voice chat">🎤 Voice</button>
-        <button class="tb-btn hidden" id="btnMute" title="Mute microphone">🎙️</button>
-        <button class="tb-btn" id="btnUndo">↩ Undo</button>
-        <button class="tb-btn danger" id="btnResign">🏳 Resign</button>
-        <button class="tb-btn" id="btnMenu">☰ Menu</button>
+  <!-- Main Theater App -->
+  <div id="theaterPage" class="hidden">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="brand">🎬 <span>CineSync</span></div>
+      
+      <div class="room-pill">
+        <span class="dot live"></span>
+        <span>Room Code:</span>
+        <strong id="roomCodeDisplay">------</strong>
+        <button id="btnCopyCode" class="icon-btn-sm" title="Copy Room Link">📋</button>
       </div>
-    </div>
 
-    <div class="game-layout">
-      <!-- Left sidebar: players + captured -->
+      <div class="media-controls-top">
+        <button id="btnToggleMic" class="control-btn active" title="Toggle Microphone">
+          <span class="icon">🎙️</span>
+          <span class="lbl">Mic ON</span>
+        </button>
+
+        <button id="btnToggleCam" class="control-btn active" title="Toggle Camera">
+          <span class="icon">📹</span>
+          <span class="lbl">Cam ON</span>
+        </button>
+
+        <button id="btnLeave" class="control-btn danger" title="Leave Party">
+          <span class="icon">🚪</span>
+          <span class="lbl">Leave</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="main-layout">
+      <!-- Left Stage: Video Player Container -->
+      <div class="player-container">
+        <!-- Direct Native Video Player (for Direct MP4 / CORS-supported links) -->
+        <video id="nativePlayer" controls class="hidden" crossorigin="anonymous" playsinline></video>
+        
+        <!-- Google Drive Streaming Frame Wrapper (Handles large GDrive files cleanly) -->
+        <div id="driveFrameWrap" class="drive-frame-wrap">
+          <iframe id="driveIframe" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>
+          <!-- Synchronized Overlay Controller for Google Drive Player -->
+          <div id="syncOverlay" class="sync-overlay">
+            <div id="playStateBadge" class="play-state-badge">▶ Ready</div>
+            <div class="overlay-controls">
+              <button id="btnSyncPlay" class="overlay-btn">▶ Play for All</button>
+              <button id="btnSyncPause" class="overlay-btn">⏸ Pause for All</button>
+              <button id="btnSyncSeekBack" class="overlay-btn">⏪ -10s</button>
+              <button id="btnSyncSeekFwd" class="overlay-btn">⏩ +10s</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Panel: Participants Video Grid & Text Chat -->
       <div class="sidebar">
         <div class="sidebar-section">
-          <div class="sidebar-label">Players</div>
-
-          <!-- Black (top, opponent) -->
-          <div class="player-panel" id="ppBlack">
-            <div class="pp-top">
-              <div class="pp-avatar b-av">
-                ♚
-                <div class="pp-turn-ring"></div>
-              </div>
-              <div class="pp-info">
-                <div class="pp-name" id="ppNameBlack">Black</div>
-                <div class="pp-color">Black Pieces</div>
+          <h3>Participants (<span id="participantCount">1</span>)</h3>
+          <div id="videoGrid" class="video-grid">
+            <!-- Local User Video -->
+            <div class="video-card" id="localVidCard">
+              <video id="localVideo" autoplay playsinline muted></video>
+              <div class="user-tag">
+                <span id="localNameTag">You</span>
+                <span class="mic-status" id="localMicTag">🎙️</span>
               </div>
             </div>
-            <div class="pp-clock" id="clockB">10:00</div>
-            <div class="captured-wrap" id="capByBlack" title="Captured by Black"></div>
           </div>
+        </div>
 
-          <!-- White (bottom, local) -->
-          <div class="player-panel active" id="ppWhite">
-            <div class="pp-top">
-              <div class="pp-avatar w-av">
-                ♔
-                <div class="pp-turn-ring"></div>
-              </div>
-              <div class="pp-info">
-                <div class="pp-name" id="ppNameWhite">White</div>
-                <div class="pp-color">White Pieces</div>
-              </div>
-            </div>
-            <div class="pp-clock" id="clockW">10:00</div>
-            <div class="captured-wrap" id="capByWhite" title="Captured by White"></div>
+        <!-- Chat Box -->
+        <div class="chat-box">
+          <div class="chat-header">💬 Live Chat</div>
+          <div id="chatMessages" class="messages"></div>
+          <div class="chat-input-row">
+            <input type="text" id="chatInput" placeholder="Type a message..." maxlength="300">
+            <button id="btnSendChat">Send</button>
           </div>
         </div>
       </div>
-
-      <!-- Board center -->
-      <div class="board-center">
-        <div class="coords-files" id="cFilesTop">
-          <span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span>
-        </div>
-        <div class="board-outer">
-          <div id="board"></div>
-        </div>
-        <div class="coords-files" id="cFilesBot">
-          <span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span>
-        </div>
-        <div class="status-bar" id="statusBar">⚪ White to move</div>
-        <div class="game-controls">
-          <button class="ctrl-btn c-gold" id="btnNew2">♟ New Game</button>
-          <button class="ctrl-btn" id="btnUndo2">↩ Undo</button>
-          <button class="ctrl-btn c-red" id="btnResign2">🏳 Resign</button>
-        </div>
-      </div>
-
-      <!-- Right sidebar: move history -->
-      <div class="sidebar sidebar-right">
-        <div class="sidebar-section">
-          <div class="sidebar-label">📋 Move History</div>
-        </div>
-        <div class="move-list-wrap" id="moveListWrap">
-          <div class="no-moves" id="noMoves">No moves yet</div>
-        </div>
-      </div>
     </div>
   </div>
 
-  <!-- Text chat panel (multiplayer games only) -->
-  <div id="chatPanel">
-    <div class="chat-header">
-      <span>💬 Chat</span>
-      <button class="chat-close" id="chatClose">✕</button>
-    </div>
-    <div class="chat-messages" id="chatMessages">
-      <div class="chat-empty">No messages yet — say hello!</div>
-    </div>
-    <div class="chat-input-row">
-      <input type="text" id="chatInput" placeholder="Type a message…" maxlength="300" autocomplete="off">
-      <button class="chat-send-btn" id="chatSend">➤</button>
-    </div>
-  </div>
+  <div id="toast" class="toast hidden"></div>
 
-  <!-- Remote audio sink for voice chat (hidden, plays automatically) -->
-  <audio id="remoteAudio" autoplay playsinline></audio>
-
-  <!-- Multiplayer toast -->
-  <div class="mp-toast" id="mpToast"></div>
-
-  <!-- Multiplayer connect / waiting overlay -->
-  <div id="mpOverlay">
-    <div class="mp-spinner" id="mpSpinner"></div>
-    <div class="mp-ov-title" id="mpOvTitle">Connecting…</div>
-    <div class="mp-code-display hidden" id="mpCodeDisplay">ABC123</div>
-    <div class="mp-ov-sub" id="mpOvSub">Setting things up.</div>
-    <div class="mp-ov-actions" id="mpOvActions">
-      <button class="mp-ov-btn primary hidden" id="mpBtnCopy">📋 Copy Invite Link</button>
-      <button class="mp-ov-btn secondary" id="mpBtnCancel">Cancel</button>
-    </div>
-  </div>
-
-  <!-- Promotion modal -->
-  <div class="modal-overlay" id="promoModal">
-    <div class="modal-box">
-      <div class="modal-title">Promote Pawn</div>
-      <div class="promo-grid" id="promoGrid"></div>
-    </div>
-  </div>
-
-  <!-- End overlay -->
-  <div id="endOverlay">
-    <div class="end-trophy" id="endTrophy">♛</div>
-    <div class="end-heading" id="endHeading">Checkmate!</div>
-    <div class="end-sub-txt" id="endSubTxt">White wins</div>
-    <div class="end-stats-row">
-      <div class="end-stat"><span class="end-stat-val" id="esMoves">—</span><span class="end-stat-lbl">Moves</span></div>
-      <div class="end-stat"><span class="end-stat-val" id="esTimeW">—</span><span class="end-stat-lbl">White</span></div>
-      <div class="end-stat"><span class="end-stat-val" id="esTimeB">—</span><span class="end-stat-lbl">Black</span></div>
-    </div>
-    <div class="end-btns">
-      <button class="btn-end-new" id="btnEndNew">♟ Rematch</button>
-      <button class="btn-end-menu" id="btnEndMenu">☰ Main Menu</button>
-    </div>
-  </div>
-
-  <!-- ══════════════════ SCRIPTS ══════════════════ -->
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  <!-- PeerJS Engine -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-  
-  <!-- Custom Logic Script -->
-  <script src="script.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

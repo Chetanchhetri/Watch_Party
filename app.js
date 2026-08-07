@@ -14,6 +14,9 @@ let currentDeviceId = null;
 
 let isRemoteEvent = false;
 let roomMode = 'meet'; // 'native' | 'drive' | 'meet'
+let originalDriveLink = null; // kept so we can fall back to the iframe embed if direct playback fails
+let hasFallenBackToIframe = false;
+let heartbeatTimer = null;
 let approvedIds = new Set();       // host only: peer ids allowed to call/connect
 let pendingRequests = new Map();   // host only: peerId -> { conn, name }
 
@@ -36,12 +39,24 @@ const hostBadge = document.getElementById('hostBadge');
 const joinRequestsBar = document.getElementById('joinRequestsBar');
 
 // ===================== UTIL =====================
+function driveFileIdFrom(url) {
+  const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+// Direct-stream URL: lets the native <video> element play a Drive file so
+// play/pause/seek can be truly forced for everyone, no "please press play" needed.
+function parseGDriveDirectUrl(url) {
+  const id = driveFileIdFrom(url);
+  return id ? `https://drive.google.com/uc?export=download&id=${id}` : url;
+}
+
+// Fallback embed used only if the direct stream can't be played (huge file,
+// restricted permissions, etc). This one truly cannot be remote-controlled by
+// script since it's a cross-origin iframe with no exposed API.
 function parseGDriveStreamUrl(url) {
-  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-  if (match && match[1]) {
-    return `https://drive.google.com/file/d/${match[1]}/preview`;
-  }
-  return url;
+  const id = driveFileIdFrom(url);
+  return id ? `https://drive.google.com/file/d/${id}/preview` : url;
 }
 
 function showToast(msg) {
@@ -381,6 +396,38 @@ function getRoomStateSnapshot() {
   return { mode: 'meet' };
 }
 
+// Host-only: if the direct Drive stream fails to play (large file, no
+// direct-download permission, etc), fall back to the embed + "notify" flow
+// and tell everyone else in the room to switch too.
+nativePlayer.addEventListener('error', () => {
+  if (!isHost || roomMode !== 'native' || !originalDriveLink || hasFallenBackToIframe) return;
+  hasFallenBackToIframe = true;
+  roomMode = 'drive';
+  driveIframe.src = parseGDriveStreamUrl(originalDriveLink);
+  applyRoomState(getRoomStateSnapshot());
+  broadcast({ type: 'ROOM_UPDATE', room: getRoomStateSnapshot() });
+  showToast("This file can't stream directly — switched everyone to notify mode.");
+});
+
+// Host-only: keep everyone tightly synced during playback, not just on
+// play/pause/seek events, so small drift and buffering hiccups self-correct.
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatTimer = setInterval(() => {
+    if (!isHost || roomMode !== 'native') return;
+    broadcast({
+      type: 'SYNC_COMMAND',
+      action: nativePlayer.paused ? 'PAUSE' : 'PLAY',
+      time: nativePlayer.currentTime,
+      heartbeat: true
+    });
+  }, 2500);
+}
+function stopHeartbeat() {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
+}
+
 // ---- Guest: handle host's approval response ----
 function onJoinApproved(data) {
   document.getElementById('waitingPage').classList.add('hidden');
@@ -431,11 +478,17 @@ function applyRoomState(room) {
   meetStage.classList.add('hidden');
 
   if (room.mode === 'native') {
-    nativePlayer.src = room.src;
+    if (nativePlayer.src !== room.src) {
+      nativePlayer.src = room.src;
+      nativePlayer.preload = 'auto';
+      nativePlayer.load();
+    }
     nativePlayer.classList.remove('hidden');
     nativePlayer.controls = isHost;
-    if (room.playing) nativePlayer.play().catch(() => {});
     if (room.time) nativePlayer.currentTime = room.time;
+    if (room.playing) nativePlayer.play().catch(() => {});
+    else nativePlayer.pause();
+    if (isHost) startHeartbeat();
   } else if (room.mode === 'drive') {
     driveIframe.src = room.src;
     driveFrameWrap.classList.remove('hidden');
@@ -538,6 +591,9 @@ function handleIncomingData(data, senderConn) {
       peers[data.id].name = data.name;
       { const el = document.querySelector(`#card-${data.id} .peer-name`); if (el) el.innerText = data.name; }
       return;
+    case 'ROOM_UPDATE':
+      applyRoomState(data.room);
+      break;
     case 'SYNC_COMMAND':
       applySyncCommand(data);
       break;
@@ -566,11 +622,13 @@ function handleIncomingData(data, senderConn) {
 
 function applySyncCommand(data) {
   isRemoteEvent = true;
+  const quiet = !!data.heartbeat; // heartbeats correct drift silently, no badge flicker
+
   if (data.action === 'PLAY') {
-    playStateBadge.innerText = '▶ Playing for all';
+    if (!quiet) playStateBadge.innerText = '▶ Playing for all';
     nativePlayer.play().catch(() => {});
   } else if (data.action === 'PAUSE') {
-    playStateBadge.innerText = '⏸ Paused for all';
+    if (!quiet) playStateBadge.innerText = '⏸ Paused for all';
     nativePlayer.pause();
   } else if (data.action === 'NOTIFY_PLAY') {
     playStateBadge.innerText = '▶ Host says: press play!';
@@ -580,10 +638,11 @@ function applySyncCommand(data) {
     appendSystemMessage('The host paused — pause on your end too.');
   }
 
-  if (data.time !== undefined && Math.abs(nativePlayer.currentTime - data.time) > 0.8) {
+  // Tighter drift tolerance so playback stays essentially in lockstep.
+  if (data.time !== undefined && Math.abs(nativePlayer.currentTime - data.time) > 0.4) {
     nativePlayer.currentTime = data.time;
   }
-  setTimeout(() => { isRemoteEvent = false; }, 300);
+  setTimeout(() => { isRemoteEvent = false; }, 150);
 }
 
 // Native player: only the host's own interactions broadcast sync commands
@@ -662,8 +721,11 @@ document.getElementById('btnCreateRoom').addEventListener('click', async () => {
   if (!link) {
     roomMode = 'meet';
   } else if (link.includes('drive.google.com')) {
-    roomMode = 'drive';
-    driveIframe.src = parseGDriveStreamUrl(link);
+    // Try direct playback first so play/pause/seek can be truly forced for
+    // everyone; only drop to the "notify" embed if that direct file fails.
+    roomMode = 'native';
+    originalDriveLink = link;
+    nativePlayer.src = parseGDriveDirectUrl(link);
   } else {
     roomMode = 'native';
     nativePlayer.src = link;
@@ -699,6 +761,7 @@ document.getElementById('btnCopyCode').addEventListener('click', () => {
 });
 
 document.getElementById('btnLeave').addEventListener('click', () => {
+  stopHeartbeat();
   window.location.reload();
 });
 

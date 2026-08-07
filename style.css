@@ -1,28 +1,31 @@
 :root {
-  --bg: #0a0d16;
-  --surface: #131826;
-  --surface-light: #1c2436;
-  --surface-lighter: #262f45;
-  --accent: #e6484f;
-  --accent-hover: #f2606a;
-  --accent-soft: rgba(230, 72, 79, 0.14);
-  --gold: #e3b341;
-  --success: #10b981;
-  --danger: #ef4444;
-  --text: #f4f5f8;
-  --text-muted: #8e9bb0;
-  --border: #262f45;
-  --radius-lg: 18px;
-  --radius-md: 12px;
-  --radius-sm: 8px;
-  --font-display: 'Fraunces', serif;
-  --font-body: 'Inter', sans-serif;
+  --bg: #1c0f15;
+  --surface: #2b1520;
+  --surface-light: #3a1e2b;
+  --surface-lighter: #4a2635;
+  --accent: #e0587a;
+  --accent-hover: #ea7290;
+  --accent-soft: rgba(224, 88, 122, 0.16);
+  --gold: #d9ab6b;
+  --success: #7bc7a3;
+  --danger: #e0587a;
+  --text: #f7ece7;
+  --text-muted: #c9a4ab;
+  --border: #4a2635;
+  --radius-lg: 22px;
+  --radius-md: 14px;
+  --radius-sm: 9px;
+  --font-display: 'Cormorant Garamond', serif;
+  --font-body: 'Work Sans', sans-serif;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font-body); }
 html, body { height: 100%; }
 body {
-  background: radial-gradient(circle at 15% 0%, #171d2f 0%, var(--bg) 55%);
+  background:
+    radial-gradient(ellipse 700px 500px at 12% -5%, rgba(224,88,122,0.16) 0%, transparent 60%),
+    radial-gradient(ellipse 600px 500px at 88% 100%, rgba(217,171,107,0.10) 0%, transparent 55%),
+    var(--bg);
   color: var(--text);
   min-height: 100vh;
   overflow: hidden;
@@ -32,13 +35,29 @@ button { font-family: inherit; }
 
 /* Landing Screen */
 .card {
-  max-width: 460px; margin: 6vh auto; padding: 40px 36px;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); box-shadow: 0 30px 70px rgba(0,0,0,0.55);
+  position: relative; overflow: hidden;
+  max-width: 460px; margin: 6vh auto; padding: 44px 38px;
+  background: linear-gradient(180deg, var(--surface) 0%, #241119 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: 0 30px 80px rgba(0,0,0,0.55), 0 0 60px -20px rgba(224,88,122,0.25);
 }
-.brand-header { text-align: center; margin-bottom: 26px; }
-.brand-header h1 { font-family: var(--font-display); font-size: 34px; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.02em; }
-.brand-header p { color: var(--text-muted); font-size: 13.5px; line-height: 1.6; }
+
+.floating-hearts { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.floating-hearts .fh {
+  position: absolute; bottom: -30px; font-size: 14px; color: var(--accent);
+  opacity: 0; animation: floatHeart 9s ease-in infinite;
+}
+@keyframes floatHeart {
+  0% { opacity: 0; transform: translateY(0) scale(0.8); }
+  10% { opacity: 0.35; }
+  80% { opacity: 0.2; }
+  100% { opacity: 0; transform: translateY(-420px) scale(1.15); }
+}
+
+.brand-header { position: relative; text-align: center; margin-bottom: 28px; }
+.brand-mark { color: var(--gold); font-size: 18px; margin-bottom: 6px; letter-spacing: 0.3em; }
+.brand-header h1 { font-family: var(--font-display); font-style: italic; font-size: 44px; font-weight: 600; margin-bottom: 10px; letter-spacing: -0.01em; }
+.brand-header .tagline { color: var(--text-muted); font-size: 14px; line-height: 1.65; font-family: var(--font-display); font-size: 17px; font-style: italic; }
 
 .input-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 22px; text-align: left; }
 .input-group label { font-size: 11.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -60,7 +79,7 @@ button { font-family: inherit; }
   padding: 13px 20px; border-radius: var(--radius-sm); border: none; font-weight: 700;
   cursor: pointer; transition: all 0.15s; font-size: 14px;
 }
-.btn.primary { background: var(--accent); color: white; width: 100%; box-shadow: 0 8px 20px -6px rgba(230,72,79,0.6); }
+.btn.primary { background: linear-gradient(135deg, var(--accent), #c8456b); color: white; width: 100%; box-shadow: 0 8px 24px -6px rgba(224,88,122,0.55); letter-spacing: 0.01em; }
 .btn.primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
 .btn.secondary { background: var(--surface-light); color: white; border: 1px solid var(--border); }
 .btn.secondary:hover { border-color: var(--text-muted); }
@@ -77,7 +96,7 @@ button { font-family: inherit; }
   animation: spin 0.9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-#waitingPage h2 { font-family: var(--font-display); font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+#waitingPage h2 { font-family: var(--font-display); font-style: italic; font-size: 26px; font-weight: 600; margin-bottom: 8px; }
 .waiting-sub { color: var(--text-muted); font-size: 13px; margin-bottom: 24px; }
 
 /* Theater Screen */
@@ -88,8 +107,8 @@ button { font-family: inherit; }
   padding: 10px 18px; background: var(--surface); border-bottom: 1px solid var(--border);
 }
 .topbar-left { display: flex; align-items: center; gap: 12px; }
-.topbar .brand { font-family: var(--font-display); font-size: 19px; font-weight: 600; white-space: nowrap; }
-.topbar .brand span { color: var(--accent); }
+.topbar .brand { font-family: var(--font-display); font-style: italic; font-size: 21px; font-weight: 600; white-space: nowrap; }
+.topbar .brand span { color: var(--gold); }
 
 .room-pill {
   display: flex; align-items: center; gap: 8px; background: var(--surface-light);

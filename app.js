@@ -883,6 +883,12 @@ document.getElementById('btnCreateRoom').addEventListener('click', async () => {
 
   await setupLocalMedia();
   initHostPeer();
+  // The host's "Set the Scene" click IS the required browser-autoplay
+  // gesture, so the host never needs the unlock overlay. Set this before
+  // applyRoomState runs so the very first native-video setup can play
+  // immediately, without waiting on showTheater() to do it later.
+  playbackUnlocked = true;
+  hideUnlockOverlay();
 
   if (!link) {
     roomMode = 'meet';
@@ -942,9 +948,14 @@ function showTheater() {
   document.getElementById('theaterPage').classList.remove('hidden');
   document.getElementById('localNameTag').innerText = `${myName} (You)`;
   hostBadge.classList.toggle('hidden', !isHost);
-  // The host's very first "Set the Scene" click is itself the unlock
-  // gesture, so hosts never need the overlay.
-  playbackUnlocked = isHost;
-  hideUnlockOverlay();
+  // NOTE: unlock-overlay state is deliberately NOT touched here. This runs
+  // *after* applyRoomState() on the guest join path, and applyRoomState is
+  // what decides — based on whether the host is already mid-playback —
+  // whether the guest needs to see "Start Watching Together". Resetting or
+  // hiding the overlay here used to clobber that decision: a guest joining
+  // a room where the movie was already playing would see the button flash
+  // and vanish, leaving them permanently stuck (the browser blocks any
+  // later scripted play() without that one real tap). Host-side unlock is
+  // handled explicitly in the "Set the Scene" handler instead.
   updateParticipantCount();
 }

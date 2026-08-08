@@ -20,6 +20,16 @@ let heartbeatTimer = null;
 let approvedIds = new Set();       // host only: peer ids allowed to call/connect
 let pendingRequests = new Map();   // host only: peerId -> { conn, name }
 
+// Browsers block unmuted programmatic video.play() unless it happens as the
+// direct result of a real click/tap on THIS document. A play() call fired
+// from an incoming data-channel message doesn't count, so guests receiving
+// a SYNC_COMMAND never actually start playback until they've supplied one
+// real gesture. This tracks whether that gesture has happened yet, and
+// pendingSyncState remembers the latest target (play/pause + time) so we
+// can apply it the instant the guest taps "Start Watching Together".
+let playbackUnlocked = false;
+let pendingSyncState = null; // { playing, time }
+
 // peers[id] = { name, conn, call, stream }
 let peers = {};
 
@@ -37,6 +47,16 @@ const playStateBadge = document.getElementById('playStateBadge');
 const hostOverlayControls = document.getElementById('hostOverlayControls');
 const hostBadge = document.getElementById('hostBadge');
 const joinRequestsBar = document.getElementById('joinRequestsBar');
+const videoUnlockOverlay = document.getElementById('videoUnlockOverlay');
+const btnUnlockPlayback = document.getElementById('btnUnlockPlayback');
+const btnResync = document.getElementById('btnResync');
+const nativeSyncBadge = document.getElementById('nativeSyncBadge');
+const nativeSyncBadgeText = document.getElementById('nativeSyncBadgeText');
+
+function setNativeSyncBadge(text, visible) {
+  nativeSyncBadgeText.innerText = text;
+  nativeSyncBadge.classList.toggle('hidden', !visible);
+}
 
 // ===================== UTIL =====================
 function driveFileIdFrom(url) {
@@ -484,10 +504,25 @@ function applyRoomState(room) {
       nativePlayer.load();
     }
     nativePlayer.classList.remove('hidden');
-    nativePlayer.controls = isHost;
+    // Give everyone real controls (volume, fullscreen, and a genuine Play
+    // button) — not just the host. A guest's own play/pause stays local
+    // (see the 'play'/'pause' listeners below) and self-corrects on the
+    // next heartbeat, so this can't desync the room.
+    nativePlayer.controls = true;
     if (room.time) nativePlayer.currentTime = room.time;
-    if (room.playing) nativePlayer.play().catch(() => {});
-    else nativePlayer.pause();
+    setNativeSyncBadge(isHost ? 'Playing for everyone' : 'Synced with the host', true);
+
+    pendingSyncState = { playing: !!room.playing, time: room.time };
+
+    if (isHost || playbackUnlocked) {
+      applyPendingSync();
+    } else if (room.playing) {
+      // Don't fire play() blind — it'll be silently rejected. Ask for the
+      // one real tap it needs instead.
+      showUnlockOverlay();
+    } else {
+      nativePlayer.pause();
+    }
     if (isHost) startHeartbeat();
   } else if (room.mode === 'drive') {
     driveIframe.src = room.src;
@@ -574,6 +609,59 @@ function exitSpotlight() {
 document.getElementById('btnExitSpotlight').addEventListener('click', exitSpotlight);
 document.getElementById('localVidCard').addEventListener('click', () => toggleSpotlight('local', myName));
 
+// ===================== PLAYBACK UNLOCK (autoplay policy) =====================
+// The single reason "only the host's video plays": browsers require a real
+// user gesture before they'll let unmuted video start via script. The host
+// gets one for free (clicking their own native video controls); guests only
+// receive scripted play() calls over the data channel, which get silently
+// blocked. Solving that just means asking guests for one tap up front.
+function showUnlockOverlay() {
+  if (isHost) return;
+  videoUnlockOverlay.classList.remove('hidden');
+}
+function hideUnlockOverlay() {
+  videoUnlockOverlay.classList.add('hidden');
+  btnResync.classList.add('hidden');
+}
+
+function applyPendingSync() {
+  if (!pendingSyncState) return;
+  isRemoteEvent = true;
+  if (pendingSyncState.time !== undefined && pendingSyncState.time !== null) {
+    if (Math.abs(nativePlayer.currentTime - pendingSyncState.time) > 0.4) {
+      nativePlayer.currentTime = pendingSyncState.time;
+    }
+  }
+  if (pendingSyncState.playing) {
+    nativePlayer.play().then(() => {
+      hideUnlockOverlay();
+      if (!isHost) showToast("You're synced — enjoy the movie 🎬");
+    }).catch((err) => {
+      console.warn('Playback blocked:', err);
+      if (!isHost) {
+        showUnlockOverlay();
+        btnResync.classList.remove('hidden');
+      }
+    });
+  } else {
+    nativePlayer.pause();
+    hideUnlockOverlay();
+  }
+  setTimeout(() => { isRemoteEvent = false; }, 150);
+}
+
+btnUnlockPlayback.addEventListener('click', () => {
+  // This click IS the real user gesture — everything downstream of it
+  // (including future scripted play() calls this session) is now allowed.
+  playbackUnlocked = true;
+  applyPendingSync();
+});
+
+btnResync.addEventListener('click', () => {
+  playbackUnlocked = true;
+  applyPendingSync();
+});
+
 // ===================== SYNC / DATA HANDLING =====================
 function handleIncomingData(data, senderConn) {
   switch (data.type) {
@@ -621,15 +709,32 @@ function handleIncomingData(data, senderConn) {
 }
 
 function applySyncCommand(data) {
-  isRemoteEvent = true;
   const quiet = !!data.heartbeat; // heartbeats correct drift silently, no badge flicker
 
   if (data.action === 'PLAY') {
     if (!quiet) playStateBadge.innerText = '▶ Playing for all';
-    nativePlayer.play().catch(() => {});
+    if (!quiet) setNativeSyncBadge('▶ Playing for everyone', true);
+    pendingSyncState = { playing: true, time: data.time };
+    if (isHost || playbackUnlocked) {
+      applyPendingSync();
+    } else {
+      // First time we know the room is playing but this guest hasn't
+      // supplied their unlock gesture yet — ask for it instead of
+      // firing a play() that the browser will just reject.
+      showUnlockOverlay();
+    }
+    return;
   } else if (data.action === 'PAUSE') {
     if (!quiet) playStateBadge.innerText = '⏸ Paused for all';
+    if (!quiet) setNativeSyncBadge('⏸ Paused for everyone', true);
+    pendingSyncState = { playing: false, time: data.time };
+    isRemoteEvent = true;
     nativePlayer.pause();
+    if (data.time !== undefined && Math.abs(nativePlayer.currentTime - data.time) > 0.4) {
+      nativePlayer.currentTime = data.time;
+    }
+    setTimeout(() => { isRemoteEvent = false; }, 150);
+    return;
   } else if (data.action === 'NOTIFY_PLAY') {
     playStateBadge.innerText = '▶ Host says: press play!';
     appendSystemMessage('The host started playback — press play on your end!');
@@ -637,12 +742,6 @@ function applySyncCommand(data) {
     playStateBadge.innerText = '⏸ Host says: pause now';
     appendSystemMessage('The host paused — pause on your end too.');
   }
-
-  // Tighter drift tolerance so playback stays essentially in lockstep.
-  if (data.time !== undefined && Math.abs(nativePlayer.currentTime - data.time) > 0.4) {
-    nativePlayer.currentTime = data.time;
-  }
-  setTimeout(() => { isRemoteEvent = false; }, 150);
 }
 
 // Native player: only the host's own interactions broadcast sync commands
@@ -776,5 +875,9 @@ function showTheater() {
   document.getElementById('theaterPage').classList.remove('hidden');
   document.getElementById('localNameTag').innerText = `${myName} (You)`;
   hostBadge.classList.toggle('hidden', !isHost);
+  // The host's very first "Set the Scene" click is itself the unlock
+  // gesture, so hosts never need the overlay.
+  playbackUnlocked = isHost;
+  hideUnlockOverlay();
   updateParticipantCount();
 }

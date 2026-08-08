@@ -111,6 +111,9 @@
       <div class="player-container">
         <!-- Direct Native Video Player -->
         <video id="nativePlayer" class="hidden" crossorigin="anonymous" playsinline preload="auto"></video>
+        <div id="nativeSyncBadge" class="native-sync-badge hidden">
+          <span class="dot live"></span> <span id="nativeSyncBadgeText">Synced with everyone</span>
+        </div>
 
         <!-- Google Drive Streaming Frame Wrapper -->
         <div id="driveFrameWrap" class="drive-frame-wrap hidden">
@@ -123,6 +126,22 @@
             </div>
           </div>
         </div>
+
+        <!-- One-tap unlock: browsers block scripted video.play() for guests
+             until they've supplied one real gesture on this page. This is
+             that gesture, and it's what makes playback actually start in
+             sync for every viewer, not just the host. -->
+        <div id="videoUnlockOverlay" class="video-unlock-overlay hidden">
+          <div class="unlock-inner">
+            <div class="unlock-icon">✦</div>
+            <h3>The movie's about to start</h3>
+            <p>Your browser needs one tap before it'll let the film play — after this, everything stays in sync automatically.</p>
+            <button id="btnUnlockPlayback" class="btn primary">▶ Start Watching Together</button>
+          </div>
+        </div>
+
+        <!-- Guest-only manual resync, also doubles as a spare unlock gesture -->
+        <button id="btnResync" class="resync-btn hidden" title="Re-sync with the host">↻ Resync with host</button>
 
         <!-- Meet-mode / no shared video placeholder -->
         <div id="meetStage" class="meet-stage hidden">

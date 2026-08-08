@@ -17,6 +17,8 @@ let roomMode = 'meet'; // 'native' | 'drive' | 'meet'
 let originalDriveLink = null; // kept so we can fall back to the iframe embed if direct playback fails
 let hasFallenBackToIframe = false;
 let heartbeatTimer = null;
+let nativeLoadTimeout = null;      // watchdog: catches "loads forever / never fires error" failures
+const NATIVE_LOAD_TIMEOUT_MS = 15000;
 let approvedIds = new Set();       // host only: peer ids allowed to call/connect
 let pendingRequests = new Map();   // host only: peerId -> { conn, name }
 
@@ -66,9 +68,18 @@ function driveFileIdFrom(url) {
 
 // Direct-stream URL: lets the native <video> element play a Drive file so
 // play/pause/seek can be truly forced for everyone, no "please press play" needed.
+//
+// drive.google.com/uc?export=download is the OLD endpoint. For anything past
+// a few dozen MB it doesn't return video bytes at all — it returns an HTML
+// "Google Drive can't scan this file for viruses" confirmation page, and the
+// <video> element just fails silently trying to decode that. That's the
+// entire reason big files never played. drive.usercontent.google.com is the
+// current direct-download host; passing confirm=t skips that interstitial,
+// and it properly honors Range requests so playback can start before the
+// whole file has downloaded instead of blocking on the full download.
 function parseGDriveDirectUrl(url) {
   const id = driveFileIdFrom(url);
-  return id ? `https://drive.google.com/uc?export=download&id=${id}` : url;
+  return id ? `https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t` : url;
 }
 
 // Fallback embed used only if the direct stream can't be played (huge file,
@@ -416,17 +427,61 @@ function getRoomStateSnapshot() {
   return { mode: 'meet' };
 }
 
-// Host-only: if the direct Drive stream fails to play (large file, no
+// Sets nativePlayer.src and arms a watchdog. We can't always rely on the
+// video element's 'error' event to catch a bad Drive link — sometimes it
+// just stalls forever instead of erroring — so a timer is the backstop.
+function loadNativeSrc(url) {
+  nativePlayer.src = url;
+  nativePlayer.preload = 'auto';
+  nativePlayer.load();
+  armNativeLoadWatchdog();
+}
+
+function armNativeLoadWatchdog() {
+  clearNativeLoadWatchdog();
+  nativeLoadTimeout = setTimeout(() => {
+    console.warn('Native video load timed out — treating as a playback failure.');
+    onNativePlaybackFailed();
+  }, NATIVE_LOAD_TIMEOUT_MS);
+}
+function clearNativeLoadWatchdog() {
+  if (nativeLoadTimeout) clearTimeout(nativeLoadTimeout);
+  nativeLoadTimeout = null;
+}
+// Metadata arriving means we actually got real video bytes, not an
+// interstitial HTML page — the load succeeded, so stand the watchdog down.
+nativePlayer.addEventListener('loadedmetadata', clearNativeLoadWatchdog);
+
+// Host: if the direct Drive stream fails to play (large file, no
 // direct-download permission, etc), fall back to the embed + "notify" flow
 // and tell everyone else in the room to switch too.
-nativePlayer.addEventListener('error', () => {
-  if (!isHost || roomMode !== 'native' || !originalDriveLink || hasFallenBackToIframe) return;
-  hasFallenBackToIframe = true;
-  roomMode = 'drive';
-  driveIframe.src = parseGDriveStreamUrl(originalDriveLink);
-  applyRoomState(getRoomStateSnapshot());
-  broadcast({ type: 'ROOM_UPDATE', room: getRoomStateSnapshot() });
-  showToast("This file can't stream directly — switched everyone to notify mode.");
+// Guest: can't unilaterally change the room, so it just reports the failure
+// to the host, who decides whether to switch everyone.
+function onNativePlaybackFailed() {
+  clearNativeLoadWatchdog();
+  if (!originalDriveLink || hasFallenBackToIframe || roomMode !== 'native') return;
+
+  if (isHost) {
+    hasFallenBackToIframe = true;
+    roomMode = 'drive';
+    driveIframe.src = parseGDriveStreamUrl(originalDriveLink);
+    applyRoomState(getRoomStateSnapshot());
+    broadcast({ type: 'ROOM_UPDATE', room: getRoomStateSnapshot() });
+    showToast("This file can't stream directly — switched everyone to notify mode.");
+  } else {
+    showToast("This video isn't loading — letting the host know.");
+    const hostPeer = peers[hostPeerId];
+    if (hostPeer && hostPeer.conn && hostPeer.conn.open) {
+      hostPeer.conn.send({ type: 'REQUEST_FALLBACK' });
+    }
+  }
+}
+
+nativePlayer.addEventListener('error', onNativePlaybackFailed);
+nativePlayer.addEventListener('stalled', () => {
+  // 'stalled' fires often during normal buffering too, so only treat it as
+  // a real failure if nothing has loaded at all yet.
+  if (nativePlayer.readyState === 0) onNativePlaybackFailed();
 });
 
 // Host-only: keep everyone tightly synced during playback, not just on
@@ -499,9 +554,7 @@ function applyRoomState(room) {
 
   if (room.mode === 'native') {
     if (nativePlayer.src !== room.src) {
-      nativePlayer.src = room.src;
-      nativePlayer.preload = 'auto';
-      nativePlayer.load();
+      loadNativeSrc(room.src);
     }
     nativePlayer.classList.remove('hidden');
     // Give everyone real controls (volume, fullscreen, and a genuine Play
@@ -633,7 +686,7 @@ function applyPendingSync() {
     }
   }
   if (pendingSyncState.playing) {
-    nativePlayer.play().then(() => {
+    const tryPlay = () => nativePlayer.play().then(() => {
       hideUnlockOverlay();
       if (!isHost) showToast("You're synced — enjoy the movie 🎬");
     }).catch((err) => {
@@ -643,6 +696,17 @@ function applyPendingSync() {
         btnResync.classList.remove('hidden');
       }
     });
+
+    // readyState < 2 (HAVE_CURRENT_DATA) means there's not enough buffered
+    // yet to play — common right after a big file starts loading. Calling
+    // play() now would just reject and get misread as an autoplay block, so
+    // wait for the browser to signal it actually has enough data.
+    if (nativePlayer.readyState < 2) {
+      if (!isHost) showToast('Buffering — this will start automatically…');
+      nativePlayer.addEventListener('canplay', tryPlay, { once: true });
+    } else {
+      tryPlay();
+    }
   } else {
     nativePlayer.pause();
     hideUnlockOverlay();
@@ -688,6 +752,9 @@ function handleIncomingData(data, senderConn) {
     case 'CHAT':
       appendChatMessage(data.sender, data.text);
       break;
+    case 'REQUEST_FALLBACK':
+      if (isHost) onNativePlaybackFailed();
+      return;
     case 'MEDIA_STATE': {
       const peerId = senderConn.peer;
       if (data.mic !== undefined) {
@@ -824,10 +891,10 @@ document.getElementById('btnCreateRoom').addEventListener('click', async () => {
     // everyone; only drop to the "notify" embed if that direct file fails.
     roomMode = 'native';
     originalDriveLink = link;
-    nativePlayer.src = parseGDriveDirectUrl(link);
+    loadNativeSrc(parseGDriveDirectUrl(link));
   } else {
     roomMode = 'native';
-    nativePlayer.src = link;
+    loadNativeSrc(link);
   }
   applyRoomState(getRoomStateSnapshot());
 
